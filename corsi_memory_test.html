@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corsi Memory Test</title>
+    <!-- <link rel="stylesheet" href="style.css">
+    <script src="corsi_memory_test.js" defer></script> -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #4caf50;
+            color: white;
+            padding: 10px;
+            text-align: center;
+        }
+
+        main {
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #game-container {
+            position: relative;
+            width: 80vmin;
+            height: 80vmin;
+            background-color: #eee;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #blocks-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .block {
+            position: absolute;
+            width: 4vmin;
+            height: 4vmin;
+            background-color: #010114;
+            border-radius: 50%;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .highlight {
+            background-color: #ff9800;
+        }
+
+        button {
+            display: inline-block;
+            background-color: #4caf50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            background-color: #3f9a40;
+        }
+
+        #feedback {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        #start-button {
+            z-index: 1;
+            position: relative;
+        }
+
+        #done-button {
+            z-index: 1;
+            position: relative;
+        }
+
+        #recursive-video {
+            width: 50%;
+            /* Adjust the width as needed */
+            height: auto;
+            /* Adjust the height as needed */
+        }
+    </style>
+
+</head>
+
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.5.0-beta4/html2canvas.min.js"></script>
+
+    <header>
+        <h1>Corsi Memory Test</h1>
+    </header>
+    <main>
+        <div id="game-container">
+            <div id="blocks-container">
+                <!-- The blocks will be created dynamically in JavaScript -->
+            </div>
+            <br>
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <button id="start-button" style="margin-bottom: 10px;">Start</button>
+                <button id="done-button" style="display:none;">Done</button>
+                <div id="feedback" style="display:none;"></div>
+            </div>
+        </div>
+        <button id="next-test" style="display:none;">Next Test</button>
+    </main>
+    <script>
+        const gameContainer = document.getElementById("game-container");
+        const blocksContainer = document.getElementById("blocks-container");
+        const startButton = document.getElementById("start-button");
+        const doneButton = document.getElementById("done-button");
+        const feedback = document.getElementById("feedback");
+        const nextTestButton = document.getElementById("next-test");
+
+
+        const numberOfBlocks = 9;
+        const blocks = [];
+        const blockSequence = [];
+        let userSequence = [];
+        let sequenceLength = 2;
+        let attempts = 0;
+
+        const gridSize = 32;
+        const gridSpacing = 100 / gridSize;
+
+
+
+        function generateRandomPosition(block) {
+            const randomX = Math.floor(Math.random() * gridSize);
+            const randomY = Math.floor(Math.random() * gridSize);
+
+            block.style.left = `${randomX * gridSpacing}%`;
+            block.style.top = `${randomY * gridSpacing}%`;
+        }
+        document.addEventListener('click', function () {
+            html2canvas(document.body).then(canvas => {
+                const imgDataUrl = canvas.toDataURL("image/png");
+
+                // Sending AJAX request to Flask backend
+                fetch('http://localhost:5000/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `image=${encodeURIComponent(imgDataUrl)}`
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Image saved:', data);
+                    })
+                    .catch((error) => {
+                        console.error('Error:', error);
+                    });
+            });
+        });
+        const title = document.querySelector("h1");
+
+        for (let i = 0; i < numberOfBlocks; i++) {
+            const block = document.createElement("div");
+            block.classList.add("block", "hidden");
+            generateRandomPosition(block);
+            block.addEventListener("click", () => {
+                if (!block.classList.contains("active")) return;
+                userSequence.push(block);
+                block.classList.toggle("highlight");
+            });
+            blocksContainer.appendChild(block);
+            blocks.push(block);
+        }
+
+
+        startButton.addEventListener("click", () => {
+            blocks.forEach(block => block.classList.remove("hidden"));
+            startButton.style.display = "none";
+            title.style.display = "none";
+
+            showSequence();
+        });
+        startButton.addEventListener("click", () => {
+            startButton.style.display = "none";
+            showSequence();
+        });
+
+        doneButton.addEventListener("click", () => {
+            checkUserSequence();
+            userSequence.forEach(block => {
+                block.classList.remove("highlight");
+            });
+        });
+        function downloadCsvFile(data, filename) {
+            const csvData = new Blob([data], { type: 'text/csv;charset=utf-8;' });
+            const csvUrl = URL.createObjectURL(csvData);
+            const link = document.createElement('a');
+            link.href = csvUrl;
+            link.download = filename;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        function showSequence() {
+            doneButton.style.display = "none";
+            feedback.style.display = "none";
+            userSequence = [];
+            generateSequence();
+            let index = 0;
+            const interval = setInterval(() => {
+                if (index < blockSequence.length) {
+                    blockSequence[index].classList.add("highlight");
+
+                    // Get the dimensions and position of the highlighted block
+                    const blockRect = blockSequence[index].getBoundingClientRect();
+
+                    // Save the highlighted block data
+                    processHighlightedBlocksData({
+                        index: index + 1,
+                        x: blockRect.x,
+                        y: blockRect.y,
+                        width: blockRect.width,
+                        height: blockRect.height,
+                        timestamp: new Date().getTime(),
+                    });
+
+                    setTimeout(() => {
+                        blockSequence[index].classList.remove("highlight");
+                        index++;
+                    }, 500);
+                } else {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        blocks.forEach(block => block.classList.add("active"));
+                        doneButton.style.display = "block";
+                    }, 500);
+                }
+            }, 1000);
+        }
+        function processHighlightedBlocksData(data) {
+            // Find the next available sequence number for the filename
+            let sequenceNumber = 1;
+            while (localStorage.getItem(`seq_${sequenceNumber}`) !== null) {
+                sequenceNumber += 1;
+            }
+
+            // Save the JSON data to local storage to keep track of used sequence numbers
+            localStorage.setItem(`seq_${sequenceNumber}`, JSON.stringify(data));
+        }
+
+        function generateSequence() {
+            blockSequence.length = 0;
+            for (let i = 0; i < sequenceLength; i++) {
+                const randomBlock = blocks[Math.floor(Math.random() * blocks.length)];
+                blockSequence.push(randomBlock);
+            }
+        }
+
+        function hideBlocks() {
+            blocks.forEach(block => block.classList.add("hidden"));
+        }
+
+
+        function checkUserSequence() {
+            blocks.forEach(block => block.classList.remove("active"));
+            doneButton.style.display = "none";
+
+            const isCorrect =
+                userSequence.length === blockSequence.length &&
+                userSequence.every((block, index) => block === blockSequence[index]);
+
+            if (isCorrect) {
+                feedback.textContent = "😃";
+                sequenceLength++;
+                attempts = 0;
+            } else {
+                feedback.textContent = "☹️"
+                attempts++;
+                if (attempts === 2) {
+                    setTimeout(() => hideBlocks(), 1000);
+                    feedback.textContent += ` Game Over! Your Corsi Block Span is ${sequenceLength - 1}.`;
+                    nextTestButton.style.display = "block";
+                    saveResults(sequenceLength - 1);
+
+                }
+            }
+            feedback.style.display = "block";
+
+            if (attempts < 2) { setTimeout(() => { showSequence(); }, 2000); }
+        }
+        function gatherSequences() {
+            const sequenceData = [];
+            let sequenceNumber = 1;
+
+            while (localStorage.getItem(`seq_${sequenceNumber}`) !== null) {
+                const seq = JSON.parse(localStorage.getItem(`seq_${sequenceNumber}`));
+                sequenceData.push(seq);
+                sequenceNumber += 1;
+            }
+
+            return sequenceData;
+        }
+
+
+        //const startTutorialButton = document.getElementById("start-tutorial-button");
+        //startTutorialButton.addEventListener("click", function () {
+        //    window.location.href = "corsi_memory_test/corsi_memory_test.html";
+        //});
+
+        nextTestButton.addEventListener("click", function () {
+            // Gather all sequences from local storage
+            const allSequences = gatherSequences();
+
+            // Convert the gathered sequences to CSV format
+            const csvData = jsonToCsv(allSequences);
+
+            // Download the CSV file
+            downloadCsvFile(csvData, "all_sequences.csv");
+
+            // Redirect to the next test
+            window.location.href = "../Perspective_taking_test/tutorial.html";
+        });
+
+        function jsonToCsv(jsonData) {
+            const replacer = (key, value) => (value === null ? '' : value);
+            const header = Object.keys(jsonData[0]);
+            const csv = [
+                header.join(','),
+                ...jsonData.map(row => header.map(fieldName => JSON.stringify(row[fieldName], replacer)).join(','))
+            ].join('\r\n');
+
+            return csv;
+        }
+        function saveResults(seq) {
+            // Convert user sequence to comma-separated string
+            const resultString = userSequence.map(block => blocks.indexOf(block) + 1).join(",");
+            const resultObj = {
+                type: 'corsiBlockSpan',
+                score: sequenceLength - 1,
+                sequence: resultString
+            };
+
+            // Retrieve existing results from local storage
+            let existingResults = localStorage.getItem("results");
+            if (existingResults) {
+                // If there are existing results, parse them
+                existingResults = JSON.parse(existingResults);
+            } else {
+                // If there are no existing results, initialize an empty array
+                existingResults = [];
+            }
+
+            // Add the new results to the existing results array
+            existingResults.push(resultObj);
+
+            // Update local storage with the combined results
+            localStorage.setItem("results", JSON.stringify(existingResults));
+        }
+
+    </script>
+</body>
+
+</html>
